@@ -1,4 +1,4 @@
-# Looxa (Colory) – Real-Time Color Detection & AR Integration
+# Looxa – Real-Time Color Detection & AR Integration
 
 Looxa is a mobile app built with React Native for real-time color detection using the device camera. It processes live frames to detect average colors and stabilizes color output for smooth user experience. The app plans to integrate machine learning-powered augmented reality (AR) features for interactive color manipulation.
 
