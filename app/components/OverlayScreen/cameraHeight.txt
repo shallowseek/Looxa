@@ -1,0 +1,143 @@
+ LOG  this is the height 850.9091186523438 width 392.7272644042969
+ LOG  this is the height 774.5454711914062 width 392.7272644042969, why height refuces,import React, { useRef } from 'react';
+import {StatusBar, StyleSheet } from 'react-native';
+import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import CameraPreview from './CameraPreview';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View } from 'dripsy';
+
+export default function CameraScreen(){
+//camera related hooks
+  const cameraRef = useRef<Camera>(null);
+  const device = useCameraDevice('back');
+
+
+
+  //all activities related to gesture handler//
+  const onTapJS = (x, y) => {
+    // x,y are screen coordinates relative to the overlay view
+    console.log('tap at', x, y);
+    // map to camera frame coords here (see mapping section)
+  };
+
+  const tapGesture = Gesture.Tap()
+    .onEnd((e) => {
+        console.log("tap detected")
+      // e.x, e.y are relative to gesture view
+      runOnJS(onTapJS)(e.x, e.y);
+    });
+
+
+//frame processor//
+const fProcessor = useFrameProcessor((frame)=>{
+'worklet'
+const originalHeight = frame.height;
+const originalWidth = frame.width;
+const scale_X = originalWidth; // Placeholder, update with actual calculation if needed
+
+},[])
+
+
+
+
+
+
+
+
+
+
+
+  return (
+     <SafeAreaView style={{ flex: 1}}>
+         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+         <View
+           sx={{
+             backgroundColor: '#0a0a0a',
+             flex: 1,
+             justifyContent: 'center',
+             alignItems: 'center',
+            //  padding: '$3',
+            //  position: "relative",
+            // borderColor:"red",
+            // borderWidth:10,
+            // margin:10,
+            
+           }
+        }
+        // onLayout={(e)=>{const{height, width}=e.nativeEvent.layout
+        //           console.log("this is the height of view",height,"width",width)}}
+         >
+   
+      <GestureDetector gesture={tapGesture}>
+        {/* <View style={[StyleSheet.absoluteFill,{borderColor:"red", borderWidth:3}]} pointerEvents="box-only" /> */}
+        {/* StyleSheet.absoluteFill makes the rectangle cover the whole parent view. */}
+      
+             
+                        <CameraPreview device={device} cameraRef={cameraRef} />
+                   {/* absoluteFill means fill of parent bound and not of screen, So the <Camera> will fill its parent, not the whole screen. */}
+                    
+        </GestureDetector>
+     
+    </View>
+    </SafeAreaView>
+  );
+}
+
+
+ChatGPT said:
+Your height is reducing because of SafeAreaView.
+
+Here’s what’s happening step-by-step:
+
+Without SafeAreaView
+
+Your <View> or <CameraPreview> can take the full screen height (let’s say ~850 in your log).
+
+This means it’s drawn from very top (behind the status bar/notch) to very bottom (behind home indicator if you have one).
+
+With SafeAreaView
+
+SafeAreaView cuts off the parts that overlap with “unsafe areas”:
+
+The top notch / status bar area
+
+The bottom home indicator or gesture bar
+
+This makes the usable space smaller. In your case, after cutting off these areas, you’re left with ~774 height.
+
+Why width doesn’t change
+
+The safe area padding is mostly vertical (top & bottom), not horizontal.
+
+Phones rarely have unsafe areas on the sides, so the width stays the same.
+
+In your logs
+
+yaml
+Copy
+Edit
+Height before safe area: 850.90
+Height after safe area: 774.54
+That’s a difference of ~76 px, which is roughly the sum of:
+
+Top padding for the notch/status bar
+
+Bottom padding for the home indicator
+
+💡 If you want the camera to fill the entire screen but still respect gestures in the safe area, you can:
+
+Keep the camera full height
+
+Overlay UI elements that avoid the safe areas using SafeAreaView
+
+I can show you an example of full-screen camera with safe overlays if you want. That way, you won’t lose height but still keep UI safe.
+
+
+
+
+
+
+
+

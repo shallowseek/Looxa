@@ -1,0 +1,723 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { View, StyleSheet, Dimensions, SafeAreaView, StatusBar, TextInput, Pressable } from "react-native"
+import { IconButton, Card, Text, Surface, Menu } from "react-native-paper"
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  interpolate,
+  Easing,
+} from "react-native-reanimated"
+import { LinearGradient } from "expo-linear-gradient"
+import { BlurView } from "expo-blur"
+import { useRouter } from "expo-router"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+
+const { width, height } = Dimensions.get("window")
+
+const guidelineBaseWidth = 375
+const scale = (size: number) => (width / guidelineBaseWidth) * size
+
+export default function ColorConverterScreen() {
+  const router = useRouter()
+  const insets = useSafeAreaInsets()
+
+  // State management
+  const [inputFormat, setInputFormat] = useState<"HEX" | "RGB">("HEX")
+  const [inputValue, setInputValue] = useState("")
+  
+  const [showResults, setShowResults] = useState(false)
+  const [isDarkTheme, setIsDarkTheme] = useState(true)
+  const [showAnalogicMenu, setShowAnalogicMenu] = useState(false)
+  const [selectedAnalogic, setSelectedAnalogic] = useState("Analogic")
+  const [apiData, setApiData] = useState({})
+
+  // Animation values
+  const glowAnimation = useSharedValue(0)
+  const shimmerAnimation = useSharedValue(0)
+  const borderShaderAnimation = useSharedValue(0)
+
+  // Sample color data (you can replace with actual conversion logic)
+  const [colorData, setColorData] = useState({
+    hsl: "hsl(210, 100%, 50%)",
+    cmyk: "cmyk(100%, 50%, 0%, 0%)",
+    hex: "#0080FF",
+    rgb: "rgb(0, 128, 255)",
+  })
+
+  // Sample analogic colors
+  const [sampleColors, setSampleColors] = useState(["#0080FF", "#0066CC", "#004C99", "#003366", "#001A33"])
+
+  useEffect(() => {
+    // Start animations - removed pulse animation to stop heartbeat effect
+    glowAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sine) }),
+        withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.sine) }),
+      ),
+      -1,
+      true,
+    )
+
+    shimmerAnimation.value = withRepeat(
+      withSequence(withTiming(1, { duration: 3000, easing: Easing.linear }), withTiming(0, { duration: 0 })),
+      -1,
+      false,
+    )
+
+    // Fixed border shader - no rotation
+    borderShaderAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2500, easing: Easing.inOut(Easing.sine) }),
+        withTiming(0, { duration: 2500, easing: Easing.inOut(Easing.sine) }),
+      ),
+      -1,
+      true,
+    )
+  }, [])
+
+  const handleFetch = async () => {
+    try {
+      const newSampleColors = []
+
+      if (inputFormat === "HEX") {
+        const response = await fetch(
+          `https://www.thecolorapi.com/scheme?hex=${inputValue?.trim().replace("#", "").toUpperCase()}&format=json&count=5&mode=analogic`,
+        )
+        const data = await response.json()
+        setShowResults(true)
+        setColorData({
+          hex: data.seed.hex.value,
+          hsl: data.seed.hsl.value,
+          cmyk: data.seed.cmyk.value,
+          rgb: data.seed.rgb.value,
+        })
+
+        data.colors.forEach((color) => {
+          console.log("this is the color sample", color.hex.value)
+          newSampleColors.push(color.hex.value)
+        })
+      } else {
+        const response = await fetch(
+          `https://www.thecolorapi.com/scheme?rgb=rgb${inputValue.trim()}&format=json&count=5&mode=analogic`,
+        )
+        const data = await response.json()
+        setShowResults(true)
+        setColorData({
+          hex: data.seed.hex.value,
+          hsl: data.seed.hsl.value,
+          cmyk: data.seed.cmyk.value,
+          rgb: data.seed.rgb.value,
+        })
+
+        data.colors.forEach((color) => {
+          newSampleColors.push(color.hex.value)
+        })
+      }
+
+      setSampleColors(newSampleColors)
+    } catch (error) {
+      console.log("Failed to fetch data", error)
+    }
+  }
+
+  const toggleInputFormat = () => {
+    setInputFormat(inputFormat === "HEX" ? "RGB" : "HEX")
+    
+  }
+
+  // Animation styles - removed pulse and fixed border shader
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(glowAnimation.value, [0, 1], [0.9, 1], "clamp"),
+  }))
+
+  const shimmerStyle = useAnimatedStyle(() => {
+    const translateX = interpolate(shimmerAnimation.value, [0, 1], [-width * 1.2, width * 1.2], "clamp")
+    const opacity = interpolate(shimmerAnimation.value, [0, 0.5, 1], [0, 0.6, 0], "clamp")
+    return {
+      transform: [{ translateX }],
+      opacity,
+    }
+  })
+
+  const borderShaderStyle = useAnimatedStyle(() => {
+    // Fixed: No rotation, just opacity animation
+    const opacity = interpolate(borderShaderAnimation.value, [0, 1], [0.4, 0.8], "clamp")
+    return {
+      opacity,
+    }
+  })
+
+  return (
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
+
+      {/* Main Content */}
+      <View style={[styles.mainContent, { paddingBottom: insets.bottom + scale(80) }]}>
+        {/* Header */}
+        <Surface style={styles.header} elevation={8}>
+          <LinearGradient
+            colors={["#1a1a1a", "#2a2a2a"]}
+            style={styles.headerGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            {/* Back Button */}
+            <IconButton
+              icon="arrow-left"
+              size={24}
+              iconColor="#fff"
+              onPress={() => {
+                console.log("Back pressed")
+                router.back()
+              }}
+              style={styles.backButton}
+            />
+
+            {/* Title */}
+            <Text style={styles.title}>Color Converter</Text>
+
+            {/* Theme Toggle */}
+            <IconButton
+              icon={isDarkTheme ? "weather-sunny" : "weather-night"}
+              size={24}
+              iconColor="#fff"
+              onPress={() => {
+                setIsDarkTheme(!isDarkTheme)
+                console.log("Theme toggled:", !isDarkTheme ? "Dark" : "Light")
+              }}
+              style={styles.themeButton}
+            />
+          </LinearGradient>
+        </Surface>
+
+        {/* Input Section */}
+        <View style={styles.inputSection}>
+          <Animated.View style={[styles.inputContainer, glowStyle]}>
+            {/* Animated border shader - Fixed */}
+            <Animated.View style={[styles.inputBorderShader, borderShaderStyle]}>
+              <LinearGradient
+                colors={["#00ff41", "#0080ff", "#ff00ff", "#00ff41"]}
+                style={styles.inputBorderGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </Animated.View>
+
+            <BlurView intensity={40} tint="dark" style={styles.inputBlurContainer}>
+              <LinearGradient colors={["rgba(26,26,26,0.9)", "rgba(42,42,42,0.8)"]} style={styles.inputGradient}>
+                {/* Shimmer effect */}
+                <Animated.View style={[styles.inputShimmer, shimmerStyle]}>
+                  <LinearGradient
+                    colors={[
+                      "transparent",
+                      "rgba(0,255,65,0.3)",
+                      "rgba(0,255,65,0.6)",
+                      "rgba(0,255,65,0.3)",
+                      "transparent",
+                    ]}
+                    style={styles.inputShimmerGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  />
+                </Animated.View>
+
+                <View style={styles.inputRow}>
+                  <TextInput
+                    style={styles.textInput}
+                    value={inputFormat==="HEX"?"#":inputValue}
+                    onChangeText={setInputValue}
+                    placeholder={inputFormat === "HEX" ? "#FF0000" : "rgb(255, 0, 0)"}
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                  />
+
+                  {/* Format Toggle Button - Removed pulse animation */}
+                  <Pressable style={styles.formatButton} onPress={toggleInputFormat}>
+                    <LinearGradient
+                      colors={["#00ff41", "#008f11"]}
+                      style={styles.formatButtonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <Text style={styles.formatButtonText}>{inputFormat}</Text>
+                    </LinearGradient>
+                  </Pressable>
+                </View>
+              </LinearGradient>
+            </BlurView>
+          </Animated.View>
+
+          {/* Fetch Button - Removed pulse animation */}
+          <View style={styles.fetchButtonContainer}>
+            <Pressable style={styles.fetchButton} onPress={handleFetch}>
+              <LinearGradient
+                colors={["#667eea", "#764ba2", "#f093fb"]}
+                style={styles.fetchButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.fetchButtonText}>Fetch</Text>
+                <IconButton icon="download" size={20} iconColor="#fff" style={styles.fetchIcon} />
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Results Section */}
+        {showResults && (
+          <View style={styles.resultsSection}>
+            {/* Upper View Box - Color Formats - Removed heartbeat animation */}
+            <View style={styles.resultCard}>
+              <Card style={styles.formatCard}>
+                <LinearGradient
+                  colors={["rgba(26,26,26,0.95)", "rgba(42,42,42,0.9)"]}
+                  style={styles.formatCardGradient}
+                >
+                  <Text style={styles.cardTitle}>Color Formats</Text>
+
+                  <View style={styles.formatRow}>
+                    <Text style={styles.formatLabel}>HSL:</Text>
+                    <Text style={styles.formatValue}>{colorData.hsl}</Text>
+                  </View>
+
+                  <View style={styles.formatRow}>
+                    <Text style={styles.formatLabel}>CMYK:</Text>
+                    <Text style={styles.formatValue}>{colorData.cmyk}</Text>
+                  </View>
+
+                  <View style={styles.formatRow}>
+                    <Text style={styles.formatLabel}>{inputFormat === "HEX" ? "RGB:" : "HEX:"}</Text>
+                    <Text style={styles.formatValue}>{inputFormat === "HEX" ? colorData.rgb : colorData.hex}</Text>
+                  </View>
+                </LinearGradient>
+              </Card>
+            </View>
+
+            {/* Lower View Box - Analogic Colors - Removed heartbeat animation */}
+            <View style={styles.resultCard}>
+              <Card style={styles.analogicCard}>
+                <LinearGradient
+                  colors={["rgba(26,26,26,0.95)", "rgba(42,42,42,0.9)"]}
+                  style={styles.analogicCardGradient}
+                >
+                  <View style={styles.analogicHeader}>
+                    <Text style={styles.cardTitle}>Color Harmony</Text>
+
+                    {/* Dropdown Menu */}
+                    <Menu
+                      visible={showAnalogicMenu}
+                      onDismiss={() => setShowAnalogicMenu(false)}
+                      anchor={
+                        <Pressable style={styles.dropdownButton} onPress={() => setShowAnalogicMenu(true)}>
+                          <Text style={styles.dropdownText}>{selectedAnalogic}</Text>
+                          <IconButton icon="chevron-down" size={20} iconColor="#00ff41" style={styles.dropdownIcon} />
+                        </Pressable>
+                      }
+                      contentStyle={styles.menuContent}
+                    >
+                      <Menu.Item
+                        onPress={() => {
+                          setSelectedAnalogic("Analogic")
+                          setShowAnalogicMenu(false)
+                        }}
+                        title="Analogic"
+                        titleStyle={styles.menuItemText}
+                      />
+                      <Menu.Item
+                        onPress={() => {
+                          setSelectedAnalogic("Complementary")
+                          setShowAnalogicMenu(false)
+                        }}
+                        title="Complementary"
+                        titleStyle={styles.menuItemText}
+                      />
+                      <Menu.Item
+                        onPress={() => {
+                          setSelectedAnalogic("Triadic")
+                          setShowAnalogicMenu(false)
+                        }}
+                        title="Triadic"
+                        titleStyle={styles.menuItemText}
+                      />
+                      <Menu.Item
+                        onPress={() => {
+                          setSelectedAnalogic("Monochromatic")
+                          setShowAnalogicMenu(false)
+                        }}
+                        title="Monochromatic"
+                        titleStyle={styles.menuItemText}
+                      />
+                    </Menu>
+                  </View>
+
+                  {/* Color Bar - Removed pulse animation */}
+                  <View style={styles.colorBar}>
+                    {sampleColors.map((color, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.colorSegment,
+                          {
+                            backgroundColor: color,
+                            shadowColor: color,
+                            shadowOpacity: 0.8,
+                            shadowRadius: 8,
+                            elevation: 8,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                </LinearGradient>
+              </Card>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Bottom Navigation */}
+      <Surface style={[styles.bottomNavigation, { bottom: insets.bottom }]} elevation={12}>
+        <LinearGradient
+          colors={["#1a1a1a", "#2a2a2a"]}
+          style={styles.bottomNavGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {/* Home */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              console.log("Home pressed")
+              router.replace("/")
+            }}
+          >
+            <IconButton icon="home" size={28} iconColor="#fff" style={styles.navIcon} />
+            <Text style={styles.navLabel}>Home</Text>
+          </Pressable>
+
+          {/* Captures */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              console.log("Captures pressed")
+              //   router.replace('/captures');
+            }}
+          >
+            <IconButton icon="camera-image" size={28} iconColor="#fff" style={styles.navIcon} />
+            <Text style={styles.navLabel}>Captures</Text>
+          </Pressable>
+
+          {/* Color Palette */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              console.log("Color Palette pressed")
+              // router.push('/palette');
+            }}
+          >
+            <IconButton icon="palette" size={28} iconColor="#00ff41" style={styles.navIcon} />
+            <Text style={styles.navLabel}>Palette</Text>
+          </Pressable>
+
+          {/* Menu */}
+          <Pressable
+            style={styles.navItem}
+            onPress={() => {
+              console.log("Menu pressed")
+              // router.replace('/menu');
+            }}
+          >
+            <IconButton icon="menu" size={28} iconColor="#fff" style={styles.navIcon} />
+            <Text style={styles.navLabel}>Menu</Text>
+          </Pressable>
+        </LinearGradient>
+      </Surface>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0a0a0a",
+  },
+  mainContent: {
+    flex: 1,
+  },
+  header: {
+    backgroundColor: "transparent",
+    elevation: 0,
+  },
+  headerGradient: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(12),
+  },
+  backButton: {
+    margin: 0,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  themeButton: {
+    margin: 0,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  title: {
+    fontSize: scale(20),
+    fontWeight: "bold",
+    color: "#fff",
+    textShadowColor: "#00ff41",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: scale(10),
+  },
+  inputSection: {
+    padding: scale(20),
+    gap: scale(20),
+  },
+  inputContainer: {
+    position: "relative",
+  },
+  inputBorderShader: {
+    position: "absolute",
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: scale(17),
+    zIndex: 1,
+  },
+  inputBorderGradient: {
+    flex: 1,
+    borderRadius: scale(17),
+  },
+  inputBlurContainer: {
+    borderRadius: scale(15),
+    overflow: "hidden",
+    zIndex: 2,
+  },
+  inputGradient: {
+    position: "relative",
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(15),
+  },
+  inputShimmer: {
+    position: "absolute",
+    top: 0,
+    left: -width * 0.3,
+    bottom: 0,
+    width: width * 0.2,
+    zIndex: 3,
+  },
+  inputShimmerGradient: {
+    flex: 1,
+    width: "100%",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scale(15),
+    zIndex: 4,
+  },
+  textInput: {
+    flex: 1,
+    color: "#fff",
+    fontSize: scale(16),
+    fontWeight: "500",
+    fontFamily: "monospace",
+  },
+  formatButton: {
+    borderRadius: scale(12),
+    overflow: "hidden",
+  },
+  formatButtonGradient: {
+    paddingHorizontal: scale(15),
+    paddingVertical: scale(8),
+  },
+  formatButtonText: {
+    color: "#000",
+    fontSize: scale(14),
+    fontWeight: "bold",
+  },
+  fetchButtonContainer: {
+    alignItems: "center",
+  },
+  fetchButton: {
+    borderRadius: scale(20),
+    overflow: "hidden",
+    elevation: 8,
+    shadowColor: "#667eea",
+    shadowOffset: { width: 0, height: scale(4) },
+    shadowOpacity: 0.6,
+    shadowRadius: scale(12),
+  },
+  fetchButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(30),
+    paddingVertical: scale(15),
+    gap: scale(10),
+  },
+  fetchButtonText: {
+    color: "#fff",
+    fontSize: scale(18),
+    fontWeight: "bold",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: scale(2),
+  },
+  fetchIcon: {
+    margin: 0,
+  },
+  resultsSection: {
+    flex: 1,
+    padding: scale(20),
+    gap: scale(20),
+  },
+  resultCard: {
+    flex: 1,
+  },
+  formatCard: {
+    backgroundColor: "transparent",
+    borderRadius: scale(20),
+    overflow: "hidden",
+    elevation: 12,
+    shadowColor: "#00ff41",
+    shadowOffset: { width: 0, height: scale(6) },
+    shadowOpacity: 0.3,
+    shadowRadius: scale(15),
+  },
+  formatCardGradient: {
+    padding: scale(20),
+  },
+  analogicCard: {
+    backgroundColor: "transparent",
+    borderRadius: scale(20),
+    overflow: "hidden",
+    elevation: 12,
+    shadowColor: "#00ff41",
+    shadowOffset: { width: 0, height: scale(6) },
+    shadowOpacity: 0.3,
+    shadowRadius: scale(15),
+  },
+  analogicCardGradient: {
+    padding: scale(20),
+  },
+  cardTitle: {
+    color: "#fff",
+    fontSize: scale(18),
+    fontWeight: "bold",
+    marginBottom: scale(15),
+    textShadowColor: "#00ff41",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: scale(8),
+  },
+  formatRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: scale(12),
+    paddingVertical: scale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  formatLabel: {
+    color: "#00ff41",
+    fontSize: scale(16),
+    fontWeight: "600",
+  },
+  formatValue: {
+    color: "#fff",
+    fontSize: scale(16),
+    fontFamily: "monospace",
+    textShadowColor: "rgba(0,255,65,0.3)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: scale(5),
+  },
+  analogicHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: scale(20),
+  },
+  dropdownButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: scale(15),
+    paddingVertical: scale(8),
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: "rgba(0,255,65,0.3)",
+  },
+  dropdownText: {
+    color: "#fff",
+    fontSize: scale(14),
+    fontWeight: "500",
+  },
+  dropdownIcon: {
+    margin: 0,
+  },
+  menuContent: {
+    backgroundColor: "#2a2a2a",
+    borderRadius: scale(12),
+    borderWidth: 1,
+    borderColor: "rgba(0,255,65,0.3)",
+  },
+  menuItemText: {
+    color: "#fff",
+  },
+  colorBar: {
+    flexDirection: "row",
+    height: scale(60),
+    borderRadius: scale(15),
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  colorSegment: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.2)",
+  },
+  bottomNavigation: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: scale(70),
+    backgroundColor: "transparent",
+    elevation: 0,
+  },
+  bottomNavGradient: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingHorizontal: Math.max(scale(8), width * 0.02),
+    paddingVertical: Math.max(scale(5), height * 0.008),
+  },
+  navItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+  navIcon: {
+    margin: 0,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    width: Math.max(scale(40), width * 0.1),
+    height: Math.max(scale(40), width * 0.1),
+  },
+  navLabel: {
+    color: "#fff",
+    fontSize: Math.max(scale(10), width * 0.028),
+    fontWeight: "500",
+    marginTop: 2,
+    textShadowColor: "rgba(0,255,65,0.3)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: scale(5),
+  },
+})

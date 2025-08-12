@@ -1,0 +1,675 @@
+"use client"
+import { Pressable, Text, View } from "dripsy"
+import { BlurView } from "expo-blur"
+import * as Haptics from "expo-haptics"
+import { LinearGradient } from "expo-linear-gradient"
+import { useRouter } from "expo-router"
+import { useEffect, useRef, useState } from "react"
+import { Dimensions, StatusBar } from "react-native"
+import { IconButton, Snackbar } from "react-native-paper"
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated"
+import { SafeAreaView } from "react-native-safe-area-context"
+import {
+  type Camera,
+  useCameraDevice,
+  useCameraFormat,
+  useCameraPermission,
+  useFrameProcessor,
+} from "react-native-vision-camera"
+import { Worklets } from "react-native-worklets-core"
+import { useResizePlugin } from "vision-camera-resize-plugin"
+import { getHexDistance, weightedAverageHexColors } from "../../../utility/hexLogic"
+import { captureImage } from "../../../utility/captureImage"
+import CameraPreview from "./cameraPreview"
+import { useDispatch } from "react-redux"
+
+export default function ScreenB() {
+  const router = useRouter()
+  const { hasPermission, requestPermission } = useCameraPermission()
+  const [isCameraOn, setCameraOn] = useState(true) // Set to true to show camera immediately
+  const dispatch = useDispatch()
+  const device = useCameraDevice("back")
+  const formats = useCameraFormat(device, [{ fps: 15 }])
+
+  // Frame dimensions as SharedValues
+  const frameHeight = useSharedValue(0)
+  const frameWidth = useSharedValue(0)
+
+  // Animation values for glow effects
+  const glowAnimation = useSharedValue(0)
+  const pulseAnimation = useSharedValue(0)
+  const shimmerAnimation = useSharedValue(0)
+  const borderPulseAnimation = useSharedValue(0)
+
+  // Allow text change
+  const [allowChange, setAllowChange] = useState(true)
+  const allowChangeRef = useRef(true)
+  const setAllowChangeValue = (value: boolean) => {
+    allowChangeRef.current = value
+    setAllowChange(value)
+  }
+
+  const cameraRef = useRef<Camera>(null)
+  const screenHeight = Dimensions.get("window").height
+  const screenWidth = Dimensions.get("window").width
+
+  const [isContain, setContain] = useState("contain")
+  const [hexCode, setHexCode] = useState("")
+  const [flash, setFlash] = useState("off")
+  const [colorMode, setColorMode] = useState<"hex" | "rgb">("hex")
+
+  const { resize } = useResizePlugin()
+
+  // Frame count in worklet
+  const frameNumber = Worklets.createSharedValue(0)
+
+  // Start animations
+  useEffect(() => {
+    // Glow animation
+    glowAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.sine) }),
+        withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.sine) }),
+      ),
+      -1,
+      true,
+    )
+
+    // Pulse animation
+    pulseAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1.05, { duration: 1000, easing: Easing.inOut(Easing.quad) }),
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+      true,
+    )
+
+    // Shimmer animation
+    shimmerAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+      true,
+    )
+
+    // Border pulse animation for detection area
+    borderPulseAnimation.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sine) }),
+        withTiming(0.7, { duration: 1200, easing: Easing.inOut(Easing.sine) }),
+      ),
+      -1,
+      true,
+    )
+  }, [])
+
+  // Convert hex to RGB
+  const hexToRgb = (hex: string) => {
+    const r = Number.parseInt(hex.slice(1, 3), 16)
+    const g = Number.parseInt(hex.slice(3, 5), 16)
+    const b = Number.parseInt(hex.slice(5, 7), 16)
+    return `rgb(${r}, ${g}, ${b})`
+  }
+
+  const frameCount = useRef<number>(0)
+  const hexBufferRef = useRef<string[]>([])
+  const lastUpdateRef = useRef(Date.now())
+  const lastHexRef = useRef("#000000")
+  const MAX_BUFFER_SIZE = 10
+  const UPDATE_INTERVAL_MS = 8000
+  const COLOR_DIFF_THRESHOLD = 60
+
+  const setHexCodeJS = Worklets.createRunOnJS((hex: string) => {
+    const now = new Date()
+    console.log("this is the frame number", frameCount.current, "this is the time", now.getSeconds())
+    hexBufferRef.current.push(hex)
+    if (hexBufferRef.current.length > MAX_BUFFER_SIZE) {
+      hexBufferRef.current.shift()
+    }
+    const lastHex = lastHexRef.current
+    const timeSinceLastUpdate = now.getTime() - lastUpdateRef.current
+    const colorDiff = getHexDistance(hex, lastHex)
+    if (timeSinceLastUpdate > UPDATE_INTERVAL_MS || colorDiff > COLOR_DIFF_THRESHOLD) {
+      const averagedHex = weightedAverageHexColors(hexBufferRef.current)
+      lastHexRef.current = averagedHex
+      lastUpdateRef.current = now.getTime()
+      hexBufferRef.current = []
+      if (allowChangeRef.current) {
+        setHexCode(averagedHex)
+      }
+    }
+  })
+
+  const incrementFrameCount = Worklets.createRunOnJS(() => {
+    frameCount.current++
+  })
+
+  // For snackbar
+  const [visible, setVisible] = useState(false)
+  const showSnackBar = () => {
+    setVisible(true)
+  }
+
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => setVisible(false), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [visible])
+
+  const frameProcessor = useFrameProcessor((frame) => {
+    "worklet"
+    const start = performance.now()
+    incrementFrameCount()
+
+    // Update frame dimensions
+    frameHeight.value = frame.height
+    frameWidth.value = frame.width
+    frameNumber.value++
+
+    if (frameNumber.value % 5 === 0) {
+      const originalWidth = frame.width
+      const originalHeight = frame.height
+
+      const resizedWidth = 100
+      const resizedHeight = 100
+
+      const resized = resize(frame, {
+        scale: { width: resizedWidth, height: resizedHeight },
+        pixelFormat: "rgb",
+        dataType: "uint8",
+      })
+
+      if (!resized || resized.length < 3) return
+
+      const rectWidth = Math.floor(originalWidth * 0.1) // 10% of width
+      const rectHeight = Math.floor(originalHeight * 0.1) // 10% of height
+      const centerX = Math.floor(originalWidth / 2)
+      const centerY = Math.floor(originalHeight / 2)
+      const rectLeft = centerX - rectWidth / 2
+      const rectTop = centerY - rectHeight / 2
+
+      const scaleX = resizedWidth / originalWidth
+      const scaleY = resizedHeight / originalHeight
+      const scaledLeft = Math.floor(rectLeft * scaleX)
+      const scaledTop = Math.floor(rectTop * scaleY)
+      const scaledWidth = Math.floor(rectWidth * scaleX)
+      const scaledHeight = Math.floor(rectHeight * scaleY)
+
+      let totalR = 0,
+        totalG = 0,
+        totalB = 0,
+        count = 0
+
+      for (let y = scaledTop; y < scaledTop + scaledHeight; y++) {
+        for (let x = scaledLeft; x < scaledLeft + scaledWidth; x++) {
+          const index = (y * resizedWidth + x) * 3
+          totalR += resized[index]
+          totalG += resized[index + 1]
+          totalB += resized[index + 2]
+          count++
+        }
+      }
+
+      const avgR = Math.round(totalR / count)
+      const avgG = Math.round(totalG / count)
+      const avgB = Math.round(totalB / count)
+      const hexValue = `#${avgR.toString(16).padStart(2, "0")}${avgG.toString(16).padStart(2, "0")}${avgB.toString(16).padStart(2, "0")}`
+
+      setHexCodeJS(hexValue)
+
+      const end = performance.now()
+      console.log(`inference took ${end - start} ms`)
+    }
+  }, [])
+
+  // Animated styles for glow effects
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(glowAnimation.value, [0, 1], [0.6, 1], "clamp"),
+    transform: [
+      {
+        scale: interpolate(glowAnimation.value, [0, 1], [1, 1.02], "clamp"),
+      },
+    ],
+  }))
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        scale: interpolate(pulseAnimation.value, [0, 1], [1, 1.05], "clamp"),
+      },
+    ],
+  }))
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: interpolate(shimmerAnimation.value, [0, 1], [-screenWidth, screenWidth], "clamp"),
+      },
+    ],
+    opacity: interpolate(shimmerAnimation.value, [0, 0.5, 1], [0, 0.8, 0], "clamp"),
+  }))
+
+  // FIXED: Detection rectangle style - calculations moved inside useAnimatedStyle
+  const detectionRectangleStyle = useAnimatedStyle(() => {
+    // Calculate dimensions and position based on frame dimensions
+    const detectionWidth = Math.floor(frameWidth.value * 0.1) || 80 // Fallback to 80 if 0
+    const detectionHeight = Math.floor(frameHeight.value * 0.1) || 80 // Fallback to 80 if 0
+    const centerX = Math.floor(frameWidth.value / 2) || screenWidth / 2 // Fallback to screen center
+    const centerY = Math.floor(frameHeight.value / 2) || screenHeight / 2 // Fallback to screen center
+    const rectangleLeft = centerX - detectionWidth / 2
+    const rectangleTop = centerY - detectionHeight / 2
+
+    return {
+      position: "absolute",
+      top: rectangleTop,
+      left: rectangleLeft,
+      width: detectionWidth,
+      height: detectionHeight,
+      borderWidth: 3,
+      borderColor: "#00ff41",
+      borderRadius: 8,
+      zIndex: 5,
+      opacity: interpolate(borderPulseAnimation.value, [0, 1], [0.7, 1], "clamp"),
+      transform: [
+        {
+          scale: interpolate(borderPulseAnimation.value, [0, 1], [1, 1.02], "clamp"),
+        },
+      ],
+      shadowColor: "#00ff41",
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.8,
+      shadowRadius: 10,
+      elevation: 10,
+    }
+  })
+
+  // Check permissions
+  useEffect(() => {
+    if (!hasPermission) {
+      requestPermission()
+    }
+  }, [hasPermission, requestPermission])
+
+  if (!hasPermission) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+        <View
+          sx={{
+            backgroundColor: "#0a0a0a",
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "$4",
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 18, textAlign: "center", marginBottom: 20 }}>
+            Camera permission is required to detect colors
+          </Text>
+          <Pressable
+            onPress={requestPermission}
+            style={{
+              backgroundColor: "#00ff41",
+              paddingHorizontal: 30,
+              paddingVertical: 15,
+              borderRadius: 25,
+            }}
+          >
+            <Text style={{ color: "#000", fontSize: 16, fontWeight: "bold" }}>Grant Permission</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (!device) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+        <View
+          sx={{
+            backgroundColor: "#0a0a0a",
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: "$4",
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 18, textAlign: "center" }}>No camera device found</Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      <View
+        sx={{
+          backgroundColor: "#0a0a0a",
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "$3",
+          position: "relative",
+        }}
+      >
+        <CameraPreview
+          device={device}
+          cameraRef={cameraRef}
+          display={isContain}
+          fProcessor={frameProcessor}
+          flash={flash}
+          formats={formats}
+        >
+          {/* FIXED: Detection Area Overlay - Now properly positioned */}
+          <Animated.View style={detectionRectangleStyle}>
+            {/* Center Dot */}
+            <View
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: "#00ff41",
+                marginTop: -6,
+                marginLeft: -6,
+                shadowColor: "#00ff41",
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 1,
+                shadowRadius: 8,
+                elevation: 15,
+              }}
+            />
+          </Animated.View>
+
+          {/* Top Controls Bar with enhanced dark theme */}
+          <BlurView
+            intensity={60}
+            tint="dark"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              paddingTop: 50,
+              paddingBottom: 20,
+              paddingHorizontal: 20,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              zIndex: 10,
+              backgroundColor: "rgba(0,0,0,0.3)",
+            }}
+          >
+            <LinearGradient
+              colors={["rgba(0,0,0,0.8)", "rgba(26,26,26,0.6)"]}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
+            />
+
+            {/* Left Controls */}
+            <View style={{ flexDirection: "row", gap: 12, zIndex: 11 }}>
+              {/* Flash Toggle */}
+              <Animated.View style={glowStyle}>
+                <IconButton
+                  icon={flash === "on" ? "flash" : "flash-off"}
+                  size={24}
+                  iconColor={flash === "on" ? "#fbbf24" : "#fff"}
+                  onPress={() => setFlash(flash === "on" ? "off" : "on")}
+                  style={{
+                    backgroundColor: flash === "on" ? "rgba(251, 191, 36, 0.3)" : "rgba(255,255,255,0.1)",
+                    borderRadius: 25,
+                    borderWidth: 1,
+                    borderColor: flash === "on" ? "rgba(251, 191, 36, 0.5)" : "rgba(255,255,255,0.2)",
+                  }}
+                />
+              </Animated.View>
+
+              {/* Contain/Cover Toggle */}
+              <Animated.View style={glowStyle}>
+                <IconButton
+                  icon={isContain === "contain" ? "fullscreen" : "fit-to-screen"}
+                  size={24}
+                  iconColor="#fff"
+                  onPress={() => setContain(isContain === "contain" ? "cover" : "contain")}
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                    borderRadius: 25,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.2)",
+                  }}
+                />
+              </Animated.View>
+
+              {/* RGB/HEX Toggle */}
+              <Animated.View style={glowStyle}>
+                <IconButton
+                  icon={colorMode === "hex" ? "palette" : "pound"}
+                  size={24}
+                  iconColor="#fff"
+                  onPress={() => setColorMode(colorMode === "hex" ? "rgb" : "hex")}
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                    borderRadius: 25,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.2)",
+                  }}
+                />
+              </Animated.View>
+            </View>
+
+            {/* Close Button */}
+            <Animated.View style={glowStyle}>
+              <IconButton
+                icon="close"
+                size={24}
+                iconColor="#fff"
+                onPress={() => {
+                  showSnackBar()
+                  setTimeout(() => {
+                    router.back()
+                    setFlash("off")
+                  }, 100)
+                }}
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.1)",
+                  borderRadius: 25,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.2)",
+                }}
+              />
+            </Animated.View>
+          </BlurView>
+
+          {/* Enhanced Bottom Controls */}
+          <BlurView
+            intensity={isContain === "contain" ? 0 : 60}
+            tint="dark"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              width: screenWidth,
+              height: screenHeight * 0.16,
+              zIndex: 100,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              overflow: "hidden",
+              backgroundColor: "rgba(0,0,0,0.4)",
+            }}
+          >
+            <LinearGradient
+              colors={["rgba(0,0,0,0.8)", "rgba(26,26,26,0.6)"]}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
+            />
+
+            {/* Enhanced Camera Button */}
+            <Animated.View
+              style={[
+                {
+                  position: "absolute",
+                  zIndex: 101,
+                  left: screenWidth * 0.4,
+                  bottom: screenHeight * 0.04,
+                },
+                pulseStyle,
+              ]}
+            >
+              <IconButton
+                icon="camera"
+                size={48}
+                iconColor="#000"
+                onPress={async () => {
+                  setAllowChange(false)
+                  await captureImage(cameraRef)
+                  setCameraOn(false)
+                }}
+                style={{
+                  backgroundColor: hexCode || "#00ff41",
+                  borderRadius: 30,
+                  elevation: 12,
+                  shadowColor: hexCode || "#00ff41",
+                  shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 15,
+                  borderWidth: 3,
+                  borderColor: "rgba(255,255,255,0.3)",
+                }}
+              />
+            </Animated.View>
+          </BlurView>
+
+          {/* Enhanced Color Display Badge */}
+          <Animated.View
+            style={[
+              {
+                position: "absolute",
+                bottom: screenHeight * 0.2,
+                alignSelf: "center",
+                backgroundColor: "rgba(0,0,0,0.8)",
+                paddingHorizontal: 25,
+                paddingVertical: 15,
+                borderRadius: 25,
+                flexDirection: "row",
+                alignItems: "center",
+                backdropFilter: "blur(15px)",
+                zIndex: 1000,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.2)",
+                elevation: 8,
+                shadowColor: hexCode || "#00ff41",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.6,
+                shadowRadius: 12,
+              },
+              glowStyle,
+            ]}
+          >
+            <Animated.View
+              style={[
+                {
+                  width: 35,
+                  height: 35,
+                  borderRadius: 50,
+                  backgroundColor: hexCode || "#00ff41",
+                  marginRight: 15,
+                  borderWidth: 2,
+                  borderColor: "rgba(255,255,255,0.6)",
+                  elevation: 4,
+                  shadowColor: hexCode || "#00ff41",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 8,
+                },
+                pulseStyle,
+              ]}
+            />
+
+            <Pressable
+              onPressIn={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setAllowChangeValue(false)
+              }}
+              onPressOut={() => {
+                setTimeout(() => {
+                  setAllowChangeValue(true)
+                }, 2500)
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: "bold",
+                  fontSize: 18,
+                  color: "#fff",
+                  letterSpacing: 1.2,
+                  fontFamily: "monospace",
+                  textShadowColor: hexCode || "#00ff41",
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 8,
+                }}
+                selectable={true}
+              >
+                {hexCode ? (colorMode === "hex" ? hexCode.toUpperCase() : hexToRgb(hexCode)) : "Detecting..."}
+              </Text>
+            </Pressable>
+          </Animated.View>
+
+          {/* Enhanced Snackbar */}
+          <Snackbar
+            visible={visible}
+            onDismiss={() => setVisible(false)}
+            duration={Snackbar.DURATION_SHORT}
+            style={{
+              position: "absolute",
+              bottom: 30,
+              alignSelf: "center",
+              backgroundColor: "rgba(255,0,0,0.9)",
+              zIndex: 100000000,
+              borderRadius: 15,
+              elevation: 12,
+              shadowColor: "#ff0000",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.8,
+              shadowRadius: 12,
+            }}
+          >
+            <Text
+              style={{
+                color: "#fff",
+                fontWeight: "bold",
+                textShadowColor: "rgba(255,0,0,0.5)",
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: 5,
+              }}
+            >
+              Closing camera...
+            </Text>
+          </Snackbar>
+        </CameraPreview>
+      </View>
+    </SafeAreaView>
+  )
+}

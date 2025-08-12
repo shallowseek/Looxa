@@ -1,0 +1,206 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {StatusBar, StyleSheet } from 'react-native';
+import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import CameraPreview from './CameraPreview';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { View } from 'dripsy';
+import { Worklets } from 'react-native-worklets-core';
+import {useTensorflowModel} from 'react-native-fast-tflite'
+import { useResizePlugin } from 'vision-camera-resize-plugin';
+
+export default function CameraScreen(){
+//hook to get resize function//
+const {resize} = useResizePlugin()
+
+//state for hold//
+
+
+
+
+
+
+
+
+
+
+//camera related hooks
+  const cameraRef = useRef<Camera>(null);
+  const device = useCameraDevice('back');
+
+//dimesnsion related hooks
+const[previewHeight, setPreviewHeight]= useState(0)
+const[previewWidth, setPreviewWidth]=useState(0)
+
+//variables related to cooridnates
+const tapX = useRef(null);
+const tapY = useRef(null);
+//use ref won't work since frameProcessor works on ui thread and it does not have access to js thread
+// useFrameProcessor worklet runs on the worklet/ntive/UI thread, completely separate from the JS thread.
+// tapX.current and tapY.current are being updated on the JS thread when you tap.
+// But the UI-thread worklet does not automatically see those updates, because normal JS variables/refs aren’t shared across threads.
+// That’s why even after you set tapX.current = 100 in onTapJS,
+// the frame processor is still reading the old value (which is null).
+
+
+  //all activities related to gesture handler//
+  const onTapJS = (x, y) => {
+    // x,y are screen coordinates relative to the overlay view
+    tapX.current= x;
+    tapY.current=y;
+    console.log('tap at', x, y);
+    // map to camera frame coords here (see mapping section)
+  };
+
+  const tapGesture = Gesture.Tap()
+    .onEnd((e) => {
+        console.log("tap detected")
+      // e.x, e.y are relative to gesture view
+      runOnJS(onTapJS)(e.x, e.y);
+    });
+
+
+
+//worklet related sctivities//
+const frameCoordinates = Worklets.createRunOnJS((scaleX:number,scaleY:number)=>{
+const frameCoord_X = Math.floor(tapX.current * scaleX);
+const frameCoord_Y = Math.floor(tapY.current * scaleY);
+console.log("this is the x ",frameCoord_X,"and y coordinates",frameCoord_Y,"in frame")
+console.log("this is the x",tapX.current,"and Y coordinates in preview",tapY.current)
+
+})
+
+
+//model related activities
+// Step 1: Load the model on native thread using a special hook
+// const objectDetection = useTensorflowModel(require('../../../assets/models/detect.tflite'))
+const semanticSegementation = useTensorflowModel(require('../../../assets/models/deeplabv3_plus_mobilenet-deeplabv3-plus-mobilenet-w8a8.tflite'))
+// useTensorflowModel() from react-native-fast-tflite, which handles loading model on the right thread automatically
+//step 2 now we will see if model has been loaded  y checking its state//
+// const model = objectDetection.state==='loaded'?objectDetection.model:undefined;
+const model2 = semanticSegementation.state==='loaded'?semanticSegementation.model:undefined;
+
+// const getModel = Worklets.createRunOnJS(()=>{
+//   return model
+// })
+
+
+
+//frameProcessor activities/
+// const fp = Worklets.createSharedValue()
+
+
+
+
+
+
+
+//frame processor//
+const fProcessor = useFrameProcessor((frame)=>{
+'worklet';
+//first we will check if model has been loaded//
+if(model2 === undefined)return;
+
+
+//first we will resize frame and then find tap coordinates in that//
+const resizedFrame= resize(frame,{
+scale:{
+  width:192,
+  height:192,
+},
+pixelFormat:'rgb',
+dataType:'uint8',
+})
+console.log("frame resized")
+
+const start = performance.now()
+// const tensorOutput = model2.runSync([resizedFrame])
+// let tensorOutput1 =model2.runSync([resizedFrame])
+const end = performance.now()
+
+console.log(`inference took ${end -start} ms`)
+// console.log("this is the output we got from model",tensorOutput1[0]["270399"])
+//we are getting array with single element whihc is an object having around 270400 properties//
+
+// if (tapX.current === null || tapY.current === null) {
+//     return; // Skip until we have valid tap coords
+//     //if we do this, then this code will never move forard since frame processor runs on ui thread//
+//     // and tapX.current gets updated  on js thread memory to which frameProcessor has no access//
+//     //so it still thinks that value is null, even though it has changed//
+
+
+  
+
+//or we could have put tapx and y.vurrent in dependency array so that when they chnage, worklet fucntion is recreated//
+//but that will affect performance since variable chnages too often and re-creating it on every chnage is not optimal
+
+//   }
+
+const originalHeight = frame.height;
+const originalWidth = frame.width;
+const scale_X = originalWidth/previewWidth;
+const scale_Y = originalHeight/previewHeight;
+// console.log("these are the frame dimensions",originalHeight,"X",originalWidth)
+// console.log("these are the dimesnions of preview screen",previewHeight,"X",previewWidth)
+// console.log("these are the scales=>>Scale_y",scale_Y, "scale_X",scale_X)
+frameCoordinates(scale_X,scale_Y)
+
+
+
+},[previewHeight, previewWidth]);
+
+
+
+
+
+
+
+
+
+
+
+  return (
+     <SafeAreaView style={{ flex: 1}}>
+         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+         <View
+           sx={{
+             backgroundColor: '#0a0a0a',
+             flex: 1,
+             justifyContent: 'center',
+             alignItems: 'center',
+            //  padding: 6,
+            //  position: "relative",
+            // borderColor:"red",
+            // borderWidth:10,
+            // margin:10,
+            
+           }
+        }
+        onLayout={(e)=>{const{height, width}=e.nativeEvent.layout
+                  console.log("this is the height of view",height,"width",width)
+                setPreviewHeight(e.nativeEvent.layout.height)
+                setPreviewWidth(e.nativeEvent.layout.width)
+        }}
+         >
+   
+      <GestureDetector gesture={tapGesture}>
+        {/* <View style={[StyleSheet.absoluteFill,{borderColor:"red", borderWidth:3}]} pointerEvents="box-only" /> */}
+        {/* StyleSheet.absoluteFill makes the rectangle cover the whole parent view. */}
+      
+             
+                   
+                            <CameraPreview
+                                device={device}
+                                cameraRef={cameraRef}
+                                frameProcessor={fProcessor}
+                            />
+                           
+                   {/* absoluteFill means fill of parent bound and not of screen, So the <Camera> will fill its parent, not the whole screen. */}
+            
+        </GestureDetector>
+     
+    </View>
+    </SafeAreaView>
+  );
+}
