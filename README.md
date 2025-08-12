@@ -61,6 +61,6 @@ MIT License (see LICENSE file)
 
 Contact
 Jatin Gaur
-Email: gaurjatin74@gmail.com
+Email: gaurjatin71@gmail.com
 GitHub: github.com/shallowseek
-LinkedIn: linkedin.com/in/yourlinkedin
+LinkedIn: www.linkedin.com/in/jatin-gaur-576b88157
