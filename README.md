@@ -1,50 +1,66 @@
-# Welcome to your Expo app 👋
+# Looxa (Colory) – Real-Time Color Detection & AR Integration
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Looxa is a mobile app built with React Native for real-time color detection using the device camera. It processes live frames to detect average colors and stabilizes color output for smooth user experience. The app plans to integrate machine learning-powered augmented reality (AR) features for interactive color manipulation.
 
-## Get started
+---
 
-1. Install dependencies
+## Features
 
-   ```bash
-   npm install
-   ```
+- Real-time detection and display of colors from live camera feed  
+- Frame averaging to stabilize color output and reduce flicker  
+- Hex and RGB color mode toggling  
+- Flashlight toggle and zoom controls  
+- Interactive UI with animated glow and shimmer effects  
+- Future plans to integrate object segmentation and AR recoloring  
+- Fully on-device processing without needing internet  
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Installation
 
 ```bash
-npm run reset-project
-```
+git clone https://github.com/shallowseek/looxa.git
+cd looxa
+npm install
+# or yarn install
+npm run android
+# or npm run ios
+Usage
+Launch the app and allow camera permissions
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Point your camera at any surface to detect color
 
-## Learn more
+Use flash toggle and zoom controls for precision
 
-To learn more about developing your project with Expo, look at the following resources:
+Tap and hold (planned feature) for AR color overlay
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Tech Stack
+React Native with Expo
 
-## Join the community
+react-native-vision-camera (camera & frame processing)
 
-Join our community of developers creating universal apps.
+@shopify/react-native-skia (graphics & drawing overlays)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Redux Toolkit & Redux Thunk (state management)
+
+React Native Paper & Dripsy (UI components and theming)
+
+EAS Build, WSL, Node.js for development environment
+
+Roadmap
+Finalize AR object segmentation and recoloring
+
+Add user controls for color palette and overlays
+
+Optimize performance for smoother frame processing
+
+Publish on app stores with monetization strategies
+
+License
+MIT License (see LICENSE file)
+
+Contact
+Jatin Gaur
+Email: gaurjatin74@gmail.com
+GitHub: github.com/shallowseek
+LinkedIn: linkedin.com/in/yourlinkedin
